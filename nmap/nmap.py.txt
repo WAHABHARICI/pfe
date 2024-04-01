@@ -1,0 +1,328 @@
+import nmap3
+nmap = nmap3.Nmap()
+results = nmap.scan_top_ports("your-host.com")
+
+code pythn nmap 
+import subprocess
+
+def run_nmap_scan(target):
+    
+    nmap_command = ["nmap", "-sV", target]
+
+    try:
+        
+        result = subprocess.run(nmap_command, capture_output=True, text=True, check=True)
+
+      
+        print(result.stdout)
+
+    except subprocess.CalledProcessError as e:
+       
+        print("Error running Nmap:", e)
+
+
+if __name__ == "__main__":
+    target = "s7ee7.com"  
+    run_nmap_scan(target)
+
+
+
+
+import subprocess
+import re
+
+def run_nmap_scan(target):
+    # Construct the Nmap command
+    nmap_command = ["nmap", "-sV", target]
+
+    try:
+        # Run the Nmap command and capture the output
+        result = subprocess.run(nmap_command, capture_output=True, text=True, check=True)
+
+        # Print the Nmap scanning result
+        print("Nmap Scan Result:")
+        print(result.stdout)
+
+        # Extract service versions using regular expressions
+        service_versions = extract_service_versions(result.stdout)
+
+        # Search for vulnerabilities using searchsploit for each detected service
+        for service, version in service_versions.items():
+            search_for_vulnerabilities(service)
+
+    except subprocess.CalledProcessError as e:
+        # Handle any errors
+        print("Error running Nmap:", e)
+
+def extract_service_versions(nmap_output):
+    # Regular expression to match service versions
+    version_pattern = r"^\d+\/\w+\s+open\s+\w+\s+\w+\s+[\w\s\(\).,-]+?\s+([\w\s]+)"
+
+    # Extract service versions from Nmap output
+    matches = re.findall(version_pattern, nmap_output, re.MULTILINE)
+    
+    # Extract version information from matches
+    service_versions = {}
+    for match in matches:
+        version = match.strip()
+        service_versions["Cloudflare http proxy"] = version
+
+    return service_versions
+
+def search_for_vulnerabilities(service):
+    print(f"Searching vulnerabilities for {service}:")
+    searchsploit_command = ["searchsploit", "vsftpd"]
+
+    try:
+        # Run the searchsploit command
+        result = subprocess.run(searchsploit_command, capture_output=True, text=True, check=True)
+        print(result.stdout)
+    except subprocess.CalledProcessError as e:
+        # Handle any errors
+        print(f"Error searching vulnerabilities for vsftpd:", e)
+
+# Example usage
+if __name__ == "__main__":
+    target = "s7ee7.com"  # Replace with your target IP address or domain
+    run_nmap_scan(target)
+
+    #########################################
+
+    from flask import Flask, request, render_template
+import nmap
+import socket
+import pyxploitdb
+
+app = Flask(__name__)
+
+# Print a message when the server starts running
+print("Server is running. Ready to scan.")
+
+def get_protocol_name(port):
+    try:
+        protocol_name = socket.getservbyport(int(port))
+    except OSError:
+        protocol_name = "Unknown"
+    return protocol_name
+
+def resolve_target(target):
+    try:
+        ip_address = socket.gethostbyname(target)
+        return ip_address
+    except socket.gaierror:
+        return None
+
+def nmap_scan(target):
+    scanner = nmap.PortScanner()
+    scanner.scan(target, arguments='-A -T4 ')
+    return scanner[target]['tcp']
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/pfe2', methods=['POST'])
+def scan():
+    target = request.form['target']
+    resolved_target = resolve_target(target)
+
+    if resolved_target:
+        results = nmap_scan(resolved_target)
+        scan_results = []
+
+        for port in results:
+            if results[port]['state'] == 'open':
+                protocol = results[port]['name']
+                product = results[port]['product']
+                version = results[port]['version']
+                protocol_name = get_protocol_name(port)
+                exploit_list = []
+
+                term = product + version
+                if term:
+                    exploits = pyxploitdb.searchEDB(term)
+                    for exploit in exploits:
+                        exploit_list.append(exploit.description)
+
+                scan_results.append({
+                    "port": port,
+                    "protocol_name": protocol_name,
+                    "product": product,
+                    "version": version,
+                    "exploits": exploit_list
+                })
+
+        return render_template('index.html', scan_results=scan_results, target=target)
+    else:
+        error = "Failed to resolve the target hostname."
+        return render_template('index.html', error=error)
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+    ###############################
+
+    from flask import Flask, request, render_template, jsonify
+import nmap
+import socket
+
+app = Flask(__name__)
+
+# Print a message when the server starts running
+print("Server is running. Ready to scan.")
+
+def get_protocol_name(port):
+    try:
+        protocol_name = socket.getservbyport(int(port))
+    except OSError:
+        protocol_name = "Unknown"
+    return protocol_name
+
+def nmap_scan(target):
+    try:
+        scanner = nmap.PortScanner()
+        scanner.scan(target, arguments='-sV -T4')
+        if target in scanner.all_hosts():
+            return scanner[target]['tcp']
+        else:
+            return {}
+    except Exception as e:
+        print(f"An error occurred during the Nmap scan: {e}")
+        return {}
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/pfe2', methods=['POST'])
+def scan_results():
+    target = request.form.get('target')
+    if target:
+        results = nmap_scan(target)
+        if results:
+            scan_results = []
+            for port in results:
+                if results[port]['state'] == 'open':
+                    protocol_name = get_protocol_name(port)
+                    scan_results.append({
+                        "port": port,
+                        "protocol_name": protocol_name,
+                        "product": results[port]['product'],
+                        "version": results[port]['version']
+                    })
+
+            # Print scan results in the terminal
+            for result in scan_results:
+                print(f"Port {result['port']}/{result['protocol_name']} is open, service version: {result['product']} {result['version']}")
+
+            return jsonify(scan_results)
+        else:
+            return jsonify({"error": "No open ports found."})
+    else:
+        return jsonify({"error": "No target provided."})
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+
+    ################
+    <!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nmap Scan</title>
+  </head>
+  <body>
+    <h1>Nmap Scan</h1>
+    <form action="/pfe2" method="post">
+      <label for="target">Target:</label>
+      <input type="text" id="target" name="target" />
+      <button type="submit">Scan</button>
+    </form>
+  </body>
+</html>
+
+
+
+##############
+from flask import Flask, request, render_template, jsonify
+import nmap
+import socket
+import pyxploitdb
+
+app = Flask(__name__)
+
+# Print a message when the server starts running
+print("Server is running. Ready to scan.")
+
+def get_protocol_name(port):
+    try:
+        protocol_name = socket.getservbyport(int(port))
+    except OSError:
+        protocol_name = "Unknown"
+    return protocol_name
+
+def nmap_scan(target):
+    try:
+        scanner = nmap.PortScanner()
+        scanner.scan(target, arguments='-sV -T4')
+        return scanner[target]['tcp']
+    except Exception as e:
+        print(f"An error occurred during the Nmap scan: {e}")
+        return None
+
+def search_exploits(term):
+    try:
+        exploits = pyxploitdb.searchEDB(term)
+        if exploits:
+            return [exploit.description for exploit in exploits]
+        else:
+            return ["No exploit found"]
+    except Exception as e:
+        print(f"An error occurred during exploit search: {e}")
+        return []
+
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/pfe2', methods=['POST'])
+def scan_results():
+    target = request.form.get('target')
+    if target:
+        results = nmap_scan(target)
+        if results:
+            scan_results = []
+            for port in results:
+                if results[port]['state'] == 'open':
+                    protocol_name = get_protocol_name(port)
+                    product = results[port]['product']
+                    version = results[port]['version']
+                    term = product +version
+                    exploit_list = search_exploits(term)
+                    scan_results.append({
+                        "port": port,
+                        "protocol_name": protocol_name,
+                        "product": product,
+                        "version": version,
+                        "exploits": exploit_list
+                    })
+
+            # Print scan results in the terminal
+            for result in scan_results:
+                print(f"Port {result['port']}/{result['protocol_name']} is open, service version: {result['product']} {result['version']}")
+                for exploit in result['exploits']:
+                    print(f"   - {exploit}")
+
+            return jsonify(scan_results)
+        else:
+            return jsonify({"error": "No open ports found."})
+    else:
+        return jsonify({"error": "No target provided."})
+
+if __name__ == '__main__':
+    app.run(debug=True)
